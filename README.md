@@ -11,7 +11,7 @@ This tool takes camera pose data from a Pupil Labs RIM enrichment from it's arbi
     * Multiple tags may improve the accuracy.
 2. Download the enrichment data using the Pupil Cloud API.
     ```bash
-    #TODO: fill this in
+    python -m downloader.rim api_key workspace_id project_id enrichment_id recording_id
     ```
 
 3. Prepare a `json` file with reference tag information
