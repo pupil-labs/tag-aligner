@@ -58,9 +58,10 @@ class Transformation:
 	def apply(self, matrix):
 		return Transformation.from_matrix(np.linalg.inv(matrix) @ self.to_matrix())
 
-def cv_space_to_3d_space(transform):
+def cv_space_to_qt3d_space(transform):
 	pos = transform.position.copy()
 	pos[1] *= -1
+	pos[2] *= -1
 
 	euler = transform.rotation.as_euler('xyz')
 	euler[1] *= -1
