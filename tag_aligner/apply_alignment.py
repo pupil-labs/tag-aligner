@@ -24,7 +24,6 @@ def apply_alignment(recording_path, scale, corrective_matrix):
 			'start_timestamp', 'end_timestamp',
 			'translation_x', 'translation_y', 'translation_z',
 			'rotation_x', 'rotation_y', 'rotation_z', 'rotation_w',
-			'original_translation_x', 'original_translation_y', 'original_translation_z',
 		])
 		dict_writer.writeheader()
 
@@ -46,9 +45,6 @@ def apply_alignment(recording_path, scale, corrective_matrix):
 				'rotation_y': rotation[1],
 				'rotation_z': rotation[2],
 				'rotation_w': rotation[3],
-				'original_translation_x': pose['translation_x'],
-				'original_translation_y': pose['translation_y'],
-				'original_translation_z': pose['translation_z'],
 			})
 
 
