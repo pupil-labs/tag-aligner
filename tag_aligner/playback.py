@@ -5,7 +5,9 @@ from pathlib import Path
 from PySide6.QtWidgets import (
 	QApplication,
 	QWidget,
-	QHBoxLayout, QVBoxLayout
+	QGridLayout, QHBoxLayout, QVBoxLayout,
+	QPushButton,
+	QSlider,
 )
 from PySide6.QtCore import (
 	Qt,
@@ -40,7 +42,6 @@ class PlaybackApp(QApplication):
 		self.window.show()
 
 	def load_recording(self, path):
-		print('Loading', path)
 		videos = list(path.glob('*.mp4'))
 		video_file = videos[0]
 		self.window.video_widget.load(video_file)
@@ -49,7 +50,6 @@ class PlaybackApp(QApplication):
 		self.window.scene_widget.load_poses(pose_file)
 
 	def load_scene(self, path):
-		print('Load scene', path)
 		self.window.scene_widget.load_scene(path)
 
 	def play(self):
@@ -63,29 +63,34 @@ class PlaybackWindow(QWidget):
 		self.video_widget = VideoPlayerWidget()
 		self.scene_widget = ScenePlayerWidget()
 
-		self.setLayout(QHBoxLayout())
-		self.layout().addWidget(self.video_widget)
-		self.layout().addWidget(self.scene_widget)
+		self.controls = QWidget()
+		self.controls.setLayout(QHBoxLayout())
+		self.play_button = QPushButton("⏯️")
+		self.time_slider = QSlider(Qt.Horizontal)
+		self.controls.layout().addWidget(self.play_button)
+		self.controls.layout().addWidget(self.time_slider)
 
-		self.video_widget.player.positionChanged.connect(self.scene_widget.seek_to_time)
+
+		self.setLayout(QGridLayout())
+		self.layout().addWidget(self.video_widget, 0, 0)
+		self.layout().addWidget(self.scene_widget, 0, 1)
+		self.layout().addWidget(self.controls, 1, 0, 1, 2)
+		self.layout().setRowStretch(0, 1)
+
+		self.play_button.clicked.connect(self.toggle_play)
+		self.video_widget.player.positionChanged.connect(self.on_video_position_changed)
+		self.video_widget.player.durationChanged.connect(self.time_slider.setMaximum)
+		#self.time_slider.sliderPressed.connect(self.video_widget.player.pause)
+		self.time_slider.sliderMoved.connect(self.video_widget.player.setPosition)
+
 		self.resize(1600, 800)
 
-	def keyPressEvent(self, event):
-		if isinstance(event, QKeyEvent):
-			step = 0.05
-			if event.key() == Qt.Key_W:
-				self.scene_widget.move(0, 0, -step)
-			elif event.key() == Qt.Key_S:
-				self.scene_widget.move(0, 0, step)
-			elif event.key() == Qt.Key_A:
-				self.scene_widget.move(-step, 0, 0)
-			elif event.key() == Qt.Key_D:
-				self.scene_widget.move(step, 0, 0)
-			elif event.key() == Qt.Key_Space:
-				self.scene_widget.move(0, step, 0)
-			elif event.key() == Qt.Key_Control:
-				self.scene_widget.move(0, -step, 0)
+	def toggle_play(self):
+		self.video_widget.toggle_playback()
 
+	def on_video_position_changed(self, time):
+		self.scene_widget.seek_to_time(time)
+		self.time_slider.setValue(time)
 
 
 class VideoPlayerWidget(QWidget):
@@ -106,6 +111,12 @@ class VideoPlayerWidget(QWidget):
 
 	def play(self):
 		self.player.play()
+
+	def toggle_playback(self):
+		if self.player.isPlaying():
+			self.player.pause()
+		else:
+			self.player.play()
 
 
 class SceneViewerWindow(Qt3DExtras.Qt3DWindow):
@@ -160,7 +171,6 @@ class SceneViewerWidget(QWidget):
 
 	def load_scene(self, path):
 		self.scene_viewer.scene.setSource(QUrl.fromLocalFile(str(path)))
-		print('loaded scene', path)
 
 	def set_camera_pose(self, position, rotation):
 		self.scene_viewer.set_camera_pose(position, rotation)
