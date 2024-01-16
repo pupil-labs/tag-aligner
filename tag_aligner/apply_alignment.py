@@ -7,7 +7,7 @@ from pathlib import Path
 
 import numpy as np
 
-from maths import (
+from .maths import (
 	Transformation,
 	rodrigues_to_rotation
 )

@@ -1,7 +1,6 @@
 from pathlib import Path
 import json
 import pickle
-import csv
 
 from tqdm import tqdm
 
@@ -13,7 +12,7 @@ from scipy.spatial.transform import Rotation
 
 import decord
 
-from maths import (
+from .maths import (
 	point_distance,
 	rodrigues_to_rotation,
 	Transformation
@@ -28,7 +27,7 @@ def calc_correction(bad, good):
 	return bad.to_matrix() @ good_inv
 
 
-def calculate_alignment(recording_path, root_tag_id, root_tag_size, root_tag_pose):
+def calculate_alignment(recording_path, reference_tags):
 	scan_video = list(recording_path.glob('*.mp4'))[0]
 	pose_df = pickle.load(open(recording_path / 'poses.p', 'br'))
 
@@ -43,14 +42,6 @@ def calculate_alignment(recording_path, root_tag_id, root_tag_size, root_tag_pos
 	]
 	print('Camera params =', camera_params)
 	print('Distortion    =', camera_distortion)
-
-	tag_points_3d = np.array([
-		[-root_tag_size/2,  root_tag_size/2, 0], # BL
-		[ root_tag_size/2,  root_tag_size/2, 0], # BR
-		[ root_tag_size/2, -root_tag_size/2, 0], # TL
-		[-root_tag_size/2, -root_tag_size/2, 0], # TR
-	])
-
 
 	at_detector = Detector()
 	pose_pairs = []
@@ -98,8 +89,17 @@ def calculate_alignment(recording_path, root_tag_id, root_tag_size, root_tag_pos
 			)
 
 			for detected_tag in detected_tags:
-				if detected_tag.tag_id != root_tag_id:
+				if detected_tag.tag_id not in reference_tags:
 					continue
+
+				ref_tag = reference_tags[detected_tag.tag_id]
+				tag_points_3d = np.array([
+					[-ref_tag["size"]/2,  ref_tag["size"]/2, 0], # BL
+					[ ref_tag["size"]/2,  ref_tag["size"]/2, 0], # BR
+					[ ref_tag["size"]/2, -ref_tag["size"]/2, 0], # TL
+					[-ref_tag["size"]/2, -ref_tag["size"]/2, 0], # TR
+				])
+
 
 				# SOLVEPNP_IPPE_SQUARE returns 2 solutions for rotation/position/error.
 				# First one always has smallest error
@@ -116,7 +116,7 @@ def calculate_alignment(recording_path, root_tag_id, root_tag_size, root_tag_pos
 
 				tag_pose = Transformation(tag_position, rodrigues_to_rotation(tag_rotation))
 				cam_pose_relative_to_tag = Transformation().relative_to(tag_pose)
-				correction = calc_correction(Transformation(), root_tag_pose)
+				correction = calc_correction(Transformation(), ref_tag["pose"])
 				cam_pose_real = cam_pose_relative_to_tag.apply(correction)
 
 				# save pose pair info
@@ -160,10 +160,15 @@ def calculate_alignment(recording_path, root_tag_id, root_tag_size, root_tag_pos
 		print('Max distance traveled', a_pose_idx, 'to', b_pose_idx, f'virt = {max_distance_virt:0.3f}, real={max_distance_real:.03f}')
 		print('Scale =', virt_to_real_scale)
 
-		# calculate corrective matrix
-		pose_pairs_by_error = sorted(pose_pairs, key=lambda item: item['tag_pose_err'])
-		best_pose_pair = pose_pairs_by_error[0]
+		# find pose pair with smallest tag pose error
+		smallest_error = float('inf')
+		best_pose_pair = None
+		for pp in pose_pairs:
+			if pp["tag_pose_err"] < smallest_error:
+				smallest_error = pp["tag_pose_err"]
+				best_pose_pair = pp
 
+		# use that pose to calculate the correction matrix
 		cam_pose_orig = best_pose_pair['cam_pose'].copy()
 		cam_pose_orig.position *= virt_to_real_scale
 		cam_pose_real = best_pose_pair['cam_pose_real']
@@ -181,14 +186,20 @@ if __name__ == '__main__':
 
 	np.set_printoptions(formatter={'float_kind':"{:+.3f}".format})
 
+	reference_tags = {}
+	with open(sys.argv[2], "r") as input_file:
+		for tag_info in json.load(input_file):
+			reference_tags[tag_info["id"]] = {
+				"size": tag_info["size"],
+				"pose": Transformation(
+					np.array(tag_info["position"]),
+					Rotation.from_quat(tag_info["rotation"]),
+				)
+			}
+
 	alignment_info = calculate_alignment(
 		recording_path = Path(sys.argv[1]),
-		root_tag_id    = int(sys.argv[2]),
-		root_tag_size  = 0.1730375,
-		root_tag_pose  = Transformation(
-			np.array([0.0, 0.0, 0.0]),
-			Rotation.from_quat([-0.707, 0.0, 0.0, 0.707]) # flat on the ground or desk
-		)
+		reference_tags = reference_tags
 	)
 	alignment_info['corrective_matrix'] = alignment_info['corrective_matrix'].tolist()
 
