@@ -2,7 +2,6 @@ import csv
 import sys
 from pathlib import Path
 
-
 from PySide6.QtWidgets import (
 	QApplication,
 	QWidget,
@@ -23,6 +22,14 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.Qt3DExtras import Qt3DExtras
 from PySide6.Qt3DCore import Qt3DCore
 from PySide6.Qt3DRender import Qt3DRender
+
+from .maths import (
+	Transformation,
+	cv_space_to_qt3d_space
+)
+
+import numpy as np
+from scipy.spatial.transform import Rotation
 
 
 class PlaybackApp(QApplication):
@@ -61,6 +68,7 @@ class PlaybackWindow(QWidget):
 		self.layout().addWidget(self.scene_widget)
 
 		self.video_widget.player.positionChanged.connect(self.scene_widget.seek_to_time)
+		self.resize(1600, 800)
 
 	def keyPressEvent(self, event):
 		if isinstance(event, QKeyEvent):
@@ -178,17 +186,17 @@ class ScenePlayerWidget(SceneViewerWidget):
 	def seek_to_time(self, timestamp_ms):
 		idx = self.find_index_by_timestamp(timestamp_ms/1000.0)
 		pose = self.poses[idx]
-		position = QVector3D(
-			pose['translation_x'],
-			pose['translation_y'],
-			pose['translation_z']
+
+		cam_pose_cv = Transformation(
+			np.array([pose['translation_x'], pose['translation_y'], pose['translation_z']]),
+			Rotation.from_quat([pose['rotation_x'], pose['rotation_y'], pose['rotation_z'], pose['rotation_w']]),
 		)
-		rotation = QQuaternion(
-			pose['rotation_w'],
-			pose['rotation_x'],
-			pose['rotation_y'],
-			pose['rotation_z']
-		)
+		cam_pose_qt = cv_space_to_qt3d_space(cam_pose_cv)
+
+		position = QVector3D(*cam_pose_qt.position)
+		x,y,z,w = cam_pose_qt.rotation.as_quat()
+		rotation = QQuaternion(w,x,y,z)
+
 		self.scene_viewer.set_camera_pose(position, rotation)
 
 	def find_index_by_timestamp(self, timestamp):

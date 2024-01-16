@@ -4,6 +4,10 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 
 class Transformation:
+	"""
+		position = cartesian x, y, z
+		rotation = quaternion x, y, z, w
+	"""
 	def __init__(self, position=None, rotation=None):
 		if position is None:
 			position = np.array([0.0, 0.0, 0.0])

@@ -19,6 +19,10 @@ from maths import (
 	Transformation
 )
 
+import pickle
+
+SAVE_POSE_PAIRS = True
+
 def calc_correction(bad, good):
 	good_inv = np.linalg.inv(good.to_matrix())
 	return bad.to_matrix() @ good_inv
@@ -52,71 +56,78 @@ def calculate_alignment(recording_path, root_tag_id, root_tag_size, root_tag_pos
 	pose_pairs = []
 	pose_idx = 0
 
-	video_reader = decord.VideoReader(str(scan_video), ctx=decord.cpu(0))
-	for frame_idx,frame in enumerate(tqdm(video_reader)):
-		frame_time = video_reader.get_frame_timestamp(frame_idx)[0]
-		frame = frame.asnumpy()
+	pose_pair_file = (recording_path / 'pose-pairs.pickle')
+	if SAVE_POSE_PAIRS and pose_pair_file.exists():
+		print('Loading pose pairs pickle', pose_pair_file)
+		with pose_pair_file.open('rb') as input_file:
+			pose_pairs = pickle.load(input_file)
 
-		frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+	else:
+		video_reader = decord.VideoReader(str(scan_video), ctx=decord.cpu(0))
+		for frame_idx,frame in enumerate(tqdm(video_reader)):
+			frame_time = video_reader.get_frame_timestamp(frame_idx)[0]
+			frame = frame.asnumpy()
 
-		while pose_idx < len(pose_df)-1 and pose_df[pose_idx]['end_timestamp'] < frame_time:
-			pose_idx += 1
+			frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-		if frame_time < pose_df[pose_idx]['start_timestamp']:
-			# there's a gap in the poses, so we must wait for the video to catch up to the poses
-			continue
-		elif frame_time > pose_df[pose_idx]['end_timestamp']:
-			# we ran out of poses, no need to continue looking
-			break
+			while pose_idx < len(pose_df)-1 and pose_df[pose_idx]['end_timestamp'] < frame_time:
+				pose_idx += 1
 
-		detected_tags = at_detector.detect(frame_gray)
-		if len(detected_tags) == 0:
-			continue
+			if frame_time < pose_df[pose_idx]['start_timestamp']:
+				# there's a gap in the poses, so we must wait for the video to catch up to the poses
+				continue
+			elif frame_time > pose_df[pose_idx]['end_timestamp']:
+				# we ran out of poses, no need to continue looking
+				break
 
-		cam_pose = Transformation(
-			np.array([
-				pose_df[pose_idx]['translation_x'],
-				pose_df[pose_idx]['translation_y'],
-				pose_df[pose_idx]['translation_z'],
-			]),
-			rodrigues_to_rotation(np.array([
-				pose_df[pose_idx]['rotation_x'],
-				pose_df[pose_idx]['rotation_y'],
-				pose_df[pose_idx]['rotation_z'],
-			]))
-		)
-
-		for detected_tag in detected_tags:
-			if detected_tag.tag_id != root_tag_id:
+			detected_tags = at_detector.detect(frame_gray)
+			if len(detected_tags) == 0:
 				continue
 
-			# SOLVEPNP_IPPE_SQUARE returns 2 solutions for rotation/position/error.
-			# First one always has smallest error
-			ok, (tag_rotation,_), (tag_position,_), (error,_) = cv2.solvePnPGeneric(
-				tag_points_3d,
-				detected_tag.corners,
-				camera_matrix,
-				camera_distortion,
-				flags = cv2.SOLVEPNP_IPPE_SQUARE
+			cam_pose = Transformation(
+				np.array([
+					pose_df[pose_idx]['translation_x'],
+					pose_df[pose_idx]['translation_y'],
+					pose_df[pose_idx]['translation_z'],
+				]),
+				rodrigues_to_rotation(np.array([
+					pose_df[pose_idx]['rotation_x'],
+					pose_df[pose_idx]['rotation_y'],
+					pose_df[pose_idx]['rotation_z'],
+				]))
 			)
 
-			if not ok:
-				continue
+			for detected_tag in detected_tags:
+				if detected_tag.tag_id != root_tag_id:
+					continue
 
-			tag_pose = Transformation(tag_position, rodrigues_to_rotation(tag_rotation))
+				# SOLVEPNP_IPPE_SQUARE returns 2 solutions for rotation/position/error.
+				# First one always has smallest error
+				ok, (tag_rotation,_), (tag_position,_), (error,_) = cv2.solvePnPGeneric(
+					tag_points_3d,
+					detected_tag.corners,
+					camera_matrix,
+					camera_distortion,
+					flags = cv2.SOLVEPNP_IPPE_SQUARE
+				)
 
-			# save pose pair info
-			pose_pairs.append({
-				'frame_idx': frame_idx,
-				'pose_idx': pose_idx,
-				'cam_pose': cam_pose,
-				'tag_pose': tag_pose,
-				'tag_pose_err': error,
-				'cam_pose_real': Transformation().relative_to(tag_pose)
-			})
+				if not ok:
+					continue
 
-		#if len(pose_pairs) >= 50:
-		#	break
+				tag_pose = Transformation(tag_position, rodrigues_to_rotation(tag_rotation))
+				cam_pose_relative_to_tag = Transformation().relative_to(tag_pose)
+				correction = calc_correction(Transformation(), root_tag_pose)
+				cam_pose_real = cam_pose_relative_to_tag.apply(correction)
+
+				# save pose pair info
+				pose_pairs.append({
+					'frame_idx': frame_idx,
+					'pose_idx': pose_idx,
+					'cam_pose': cam_pose,
+					'tag_pose': tag_pose,
+					'tag_pose_err': error,
+					'cam_pose_real': cam_pose_real
+				})
 
 	print('Found', len(pose_pairs), 'pose pairs')
 
@@ -148,11 +159,6 @@ def calculate_alignment(recording_path, root_tag_id, root_tag_size, root_tag_pos
 		virt_to_real_scale = max_distance_real / max_distance_virt
 		print('Max distance traveled', a_pose_idx, 'to', b_pose_idx, f'virt = {max_distance_virt:0.3f}, real={max_distance_real:.03f}')
 		print('Scale =', virt_to_real_scale)
-		#print('Cam pose a (real)', cam_pose_a)
-		#print('Cam pose b (real)', cam_pose_b)
-		#print('Cam pose a (virt)', pose_pairs[id_a]['cam_pose'])
-		#print('Cam pose b (virt)', pose_pairs[id_b]['cam_pose'])
-		#print('')
 
 		# calculate corrective matrix
 		pose_pairs_by_error = sorted(pose_pairs, key=lambda item: item['tag_pose_err'])
@@ -163,20 +169,6 @@ def calculate_alignment(recording_path, root_tag_id, root_tag_size, root_tag_pos
 		cam_pose_real = best_pose_pair['cam_pose_real']
 		corrective_matrix = calc_correction(cam_pose_orig, cam_pose_real)
 
-		# sanity check
-		for pose_pair in pose_pairs_by_error:
-			cam_pose_orig = pose_pair['cam_pose'].copy()
-			cam_pose_orig.position *= virt_to_real_scale
-			cam_pose_real = pose_pair['cam_pose_real']
-			corrective_matrix = calc_correction(cam_pose_orig, cam_pose_real)
-
-			calculated_pose = cam_pose_orig.apply(corrective_matrix)
-
-			print(calculated_pose, cam_pose_real, end=' ')
-			if np.allclose(calculated_pose.to_matrix(), 'vs', cam_pose_real.to_matrix()):
-				print('ok')
-			else:
-				print('WARN')
 
 		return {
 			'scale': virt_to_real_scale,
@@ -192,15 +184,18 @@ if __name__ == '__main__':
 	alignment_info = calculate_alignment(
 		recording_path = Path(sys.argv[1]),
 		root_tag_id    = int(sys.argv[2]),
-		root_tag_size  = 0.17145,
-		root_tag_pose  = Transformation()
+		root_tag_size  = 0.1730375,
+		root_tag_pose  = Transformation(
+			np.array([0.0, 0.0, 0.0]),
+			Rotation.from_quat([-0.707, 0.0, 0.0, 0.707]) # flat on the ground or desk
+		)
 	)
 	alignment_info['corrective_matrix'] = alignment_info['corrective_matrix'].tolist()
 
 	if len(sys.argv) > 3:
 		output_file = sys.argv[3]
 		print('Writing', output_file)
+		with open(output_file, 'w') as output_file:
+			json.dump(alignment_info, output_file, indent=4)
 	else:
-		output_file = sys.stdout
-
-	json.dump(alignment_info, output_file)
+		json.dumps(alignment_info, indent=4)

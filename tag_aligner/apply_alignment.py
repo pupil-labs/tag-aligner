@@ -30,7 +30,7 @@ def apply_alignment(recording_path, scale, corrective_matrix):
 
 		for pose in pose_df:
 			transform = Transformation(
-				np.array([pose['rotation_x'], pose['rotation_y'], pose['rotation_z']]),
+				np.array([pose['translation_x'], pose['translation_y'], pose['translation_z']]) * scale,
 				rodrigues_to_rotation(np.array([pose['rotation_x'], pose['rotation_y'], pose['rotation_z']]))
 			).apply(corrective_matrix)
 
