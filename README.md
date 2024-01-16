@@ -2,6 +2,11 @@
 
 This tool takes camera pose data from a Pupil Labs RIM enrichment from it's arbitrary coordinate space and scale and transforms those poses to a known space and scale using one or more AprilTag markers.
 
+## Depedendencies
+```bash
+pip install -r requirements.txt
+```
+
 ## Usage
 
 ### 0. Preparation
@@ -54,6 +59,11 @@ python -m tag_aligner.apply_alignment path/to/recording_folder/ path/to/alignmen
 This will create a new file in the recording folder named `aligned_poses.csv` with the scaled and aligned poses. Note that orientation is specified as a quaternion.
 
 ### 3. Bonus: Visualize
+This requires an additional dependency not specified in `requirements.txt`:
+```bash
+pip install pyside6
+```
+
 Run the `tag_aligner.playback` module to view the recording side-by-side with a digital twin by specifying the path to the recording and a `gltf` scene file.
 ```bash
 python -m tag_aligner.playback path/to/recording_folder/ path/to/digital/scene.gltf

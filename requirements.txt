@@ -1,0 +1,7 @@
+requests
+tqdm
+pupil_apriltags
+numpy
+opencv_python
+scipy
+decord
