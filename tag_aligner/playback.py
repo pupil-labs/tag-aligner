@@ -1,5 +1,7 @@
 import csv
 import sys
+import json
+import struct
 from pathlib import Path
 
 from PySide6.QtWidgets import (
@@ -47,6 +49,12 @@ class PlaybackApp(QApplication):
 
         pose_file = path / 'aligned_poses.csv'
         self.window.scene_widget.load_poses(pose_file)
+
+        with Path(path/'info.json').open('r') as recording_info_file:
+            recording_info = json.load(recording_info_file)
+
+        gaze_file = path / 'gaze.csv'
+        self.window.scene_widget.load_gazes(gaze_file, recording_info['start_time'])
 
     def load_scene(self, path):
         self.window.scene_widget.load_scene(path)
@@ -124,18 +132,19 @@ class SceneViewerWindow(Qt3DExtras.Qt3DWindow):
         self.defaultFrameGraph().setClearColor("black")
         self.defaultFrameGraph().setFrustumCullingEnabled(False)
 
-        self.camera().lens().setPerspectiveProjection(100, 1.0, 0.01, 1000)
-        self.camera().setPosition(QVector3D(0, 0, 1))
-        for component in self.camera().components():
-            if isinstance(component, Qt3DCore.QTransform):
-                self.camera_transform = component
-                break
-
         self.root_entity = Qt3DCore.QEntity()
         self.scene = Qt3DRender.QSceneLoader()
         self.root_entity.addComponent(self.scene)
 
-        self.light_entity = Qt3DCore.QEntity(self.root_entity)
+        self.subject_entity = Qt3DCore.QEntity(self.root_entity)
+        self.subject_scene = Qt3DRender.QSceneLoader()
+        self.subject_scene.setSource(QUrl.fromLocalFile(str('tag_aligner/assets/JAN.gltf')))
+        self.subject_transform = Qt3DCore.QTransform()
+        self.subject_entity.addComponent(self.subject_scene)
+        self.subject_entity.addComponent(self.subject_transform)
+
+
+        self.light_entity = Qt3DCore.QEntity(self.subject_entity)
         self.light = Qt3DRender.QPointLight(self.light_entity)
         self.light.setIntensity(5)
         self.light_transform = Qt3DCore.QTransform()
@@ -143,14 +152,38 @@ class SceneViewerWindow(Qt3DExtras.Qt3DWindow):
         self.light_entity.addComponent(self.light)
         self.light_entity.addComponent(self.light_transform)
 
+
+        self.gaze_pointer_entity = Qt3DCore.QEntity(self.subject_entity)
+        self.gaze_ray_mesh = Qt3DRender.QSceneLoader()
+        self.gaze_ray_mesh.setSource(QUrl.fromLocalFile(str('tag_aligner/assets/ray.gltf')))
+        self.gaze_pointer_transform = Qt3DCore.QTransform()
+        self.gaze_pointer_entity.addComponent(self.gaze_ray_mesh)
+        self.gaze_pointer_entity.addComponent(self.gaze_pointer_transform)
+
         self.setRootEntity(self.root_entity)
+
+
+        self.camera_controller = Qt3DExtras.QOrbitCameraController(self.root_entity)
+        self.camera_controller.setLinearSpeed(50.0)
+        self.camera_controller.setLookSpeed(180.0)
+        self.camera_controller.setCamera(self.camera())
+
+        self.initial_pose_set = False
 
     def resizeEvent(self, event):
         self.camera().setAspectRatio(self.width() / self.height())
 
-    def set_camera_pose(self, position, rotation):
-        self.camera_transform.setTranslation(position)
-        self.camera_transform.setRotation(rotation)
+    def set_subject_pose(self, position, rotation):
+        if not self.initial_pose_set:
+            self.camera().setPosition(QVector3D(3, 3, 3))
+            self.camera().setViewCenter(position)
+
+            self.initial_pose_set = True
+        self.subject_transform.setTranslation(position)
+        self.subject_transform.setRotation(rotation)
+
+    def set_gaze_angle(self, rotation):
+        self.gaze_pointer_transform.setRotation(rotation)
 
 
 class SceneViewerWidget(QWidget):
@@ -170,8 +203,11 @@ class SceneViewerWidget(QWidget):
     def load_scene(self, path):
         self.scene_viewer.scene.setSource(QUrl.fromLocalFile(str(path)))
 
-    def set_camera_pose(self, position, rotation):
-        self.scene_viewer.set_camera_pose(position, rotation)
+    def set_subject_pose(self, position, rotation):
+        self.scene_viewer.set_subject_pose(position, rotation)
+
+    def set_gaze_angle(self, rotation):
+        self.scene_viewer.set_gaze_angle(rotation)
 
 
 class ScenePlayerWidget(SceneViewerWidget):
@@ -179,6 +215,7 @@ class ScenePlayerWidget(SceneViewerWidget):
         super().__init__()
 
         self.poses = []
+        self.gazes = []
         self.installEventFilter(self)
 
     def load_poses(self, path):
@@ -191,9 +228,24 @@ class ScenePlayerWidget(SceneViewerWidget):
 
         print(len(self.poses), 'poses loaded')
 
+    def load_gazes(self, path, recording_start_time):
+        with path.open('r') as csv_file:
+            reader = csv.DictReader(csv_file)
+            self.gazes = []
+            for row in reader:
+                for k in row:
+                    if ' id' not in k:
+                        row[k] = float(row[k])
+
+                row['timestamp'] = (row['timestamp [ns]'] - recording_start_time) / 1e9
+
+                self.gazes.append(row)
+
+        print(len(self.gazes), 'gazes loaded')
+
     def seek_to_time(self, timestamp_ms):
-        idx = self.find_index_by_timestamp(timestamp_ms/1000.0)
-        pose = self.poses[idx]
+        pose_idx = self.find_pose_index_by_timestamp(timestamp_ms/1000.0)
+        pose = self.poses[pose_idx]
 
         cam_pose_cv = Transformation(
             np.array([pose['translation_x'], pose['translation_y'], pose['translation_z']]),
@@ -205,9 +257,21 @@ class ScenePlayerWidget(SceneViewerWidget):
         x,y,z,w = cam_pose_qt.rotation.as_quat()
         rotation = QQuaternion(w,x,y,z)
 
-        self.scene_viewer.set_camera_pose(position, rotation)
+        self.scene_viewer.set_subject_pose(position, rotation)
 
-    def find_index_by_timestamp(self, timestamp):
+        gaze_idx = self.find_gaze_index_by_timestamp(timestamp_ms/1000.0)
+        gaze = self.gazes[gaze_idx]
+        gaze_transform_cv = Transformation(
+            np.array([0.0, 0.0, 0.0]),
+            Rotation.from_euler('xyz', [gaze['elevation [deg]'], gaze['azimuth [deg]'], 0.0], degrees=True),
+        )
+        gaze_pose_qt = cv_space_to_qt3d_space(gaze_transform_cv)
+        x,y,z,w = gaze_pose_qt.rotation.as_quat()
+        rotation = QQuaternion(w,x,y,z)
+        self.scene_viewer.set_gaze_angle(rotation)
+
+
+    def find_pose_index_by_timestamp(self, timestamp):
         left_idx = 0
         right_idx = len(self.poses)-1
         while right_idx - left_idx > 1:
@@ -216,6 +280,21 @@ class ScenePlayerWidget(SceneViewerWidget):
             if timestamp < self.poses[mid_idx]['start_timestamp']:
                 right_idx = mid_idx
             elif timestamp > self.poses[mid_idx]['end_timestamp']:
+                left_idx = mid_idx
+            else:
+                break
+
+        return mid_idx
+
+    def find_gaze_index_by_timestamp(self, timestamp):
+        left_idx = 0
+        right_idx = len(self.gazes)-1
+        while right_idx - left_idx > 1:
+            mid_idx = (left_idx + right_idx) // 2
+
+            if timestamp < self.gazes[mid_idx]['timestamp']:
+                right_idx = mid_idx
+            elif timestamp > self.gazes[mid_idx]['timestamp']:
                 left_idx = mid_idx
             else:
                 break

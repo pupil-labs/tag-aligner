@@ -149,7 +149,7 @@ class App(QApplication):
             x,y,z,w = cam_pose2.rotation.as_quat()
             rotation = QQuaternion(w,x,y,z)
 
-            self.display.scene_widget.set_camera_pose(position, rotation)
+            self.display.scene_widget.set_subject_pose(position, rotation)
 
             colors = [
                 (0, 255, 0),

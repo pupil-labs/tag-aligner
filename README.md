@@ -69,6 +69,17 @@ Run the `tag_aligner.playback` module to view the recording side-by-side with a 
 python -m tag_aligner.playback path/to/recording_folder/ path/to/digital/scene.gltf
 ```
 
+To control the camera in the digital twin view, you must click on the view to give it focus. The controls are as follows:
+| Input              | Action                   |
+|--------------------|--------------------------|
+| Left mouse button  | While the left mouse button is pressed, mouse movement along x-axis moves the camera left and right and movement along y-axis moves it up and down.
+| Right mouse button | While the right mouse button is pressed, mouse movement along x-axis pans the camera around the camera view center and movement along y-axis tilts it around the camera view center.
+| Left+Right buttons | While both the left and the right mouse button are pressed, mouse movement along y-axis zooms the camera in and out without changing the view center.
+| Scroll wheel       | Zooms the camera in and out without changing the view center.
+| Arrow keys         | Move the camera vertically and horizontally relative to camera viewport.
+| Page up/down       | Move the camera forwards and backwards.
+| Alt                | Changes the behovior of the arrow keys to pan and tilt the camera around the view center. Disables the page up and page down keys.
+
 
 ## Notes
 
@@ -78,12 +89,12 @@ The output space coordinate system matches OpenCV's:
 * Positive Z extends forward from the camera view
 
 To convert Blender-space poses to OpenCV (e.g., in the reference tag json file):
-| OpenCV       | Blender      |
-| -------------| -------------|
-| Position x   | Position x   |
+| OpenCV           | Blender          |
+| ---------------- | ---------------- |
+| Position x       | Position x       |
 | Position **y**   | Position **-z**  |
 | Position **z**   | Position **y**   |
-| Quaternion x | Quaternion x |
+| Quaternion x     | Quaternion x     |
 | Quaternion **y** | Quaternion **z** |
 | Quaternion **z** | Quaternion **y** |
-| Quaternion w | Quaternion w |
+| Quaternion w     | Quaternion w     |
