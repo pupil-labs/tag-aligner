@@ -21,6 +21,7 @@ pip install -r requirements.txt
 
 3. Prepare a `json` file with reference tag information
     * Units for position and size are in output space units
+    * Position is measured from the center of the tag
     * Rotation is a quaternion in `[x, y, z, w]` order
     * The coordinate system must match OpenCV's. See [notes](#notes) below.
     * Here's an example that contains size and pose information for two different AprilTag markers:
