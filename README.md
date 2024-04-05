@@ -23,6 +23,7 @@ pip install -r requirements.txt
     * Units for position and size are in output space units
     * Position is measured from the center of the tag
     * Rotation is a quaternion in `[x, y, z, w]` order
+    * An upright tag positioned on a wall would have a quaternion value of `[0.0, 0.0, 0.0, 1.0]`.
     * The coordinate system must match OpenCV's. See [notes](#notes) below.
     * Here's an example that contains size and pose information for two different AprilTag markers:
         ```json
