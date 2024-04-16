@@ -18,6 +18,7 @@ from PySide6.QtCore import (
     Qt,
     QUrl,
     QTimer,
+    QRect,
 )
 from PySide6.QtGui import (
     QVector3D,
@@ -125,12 +126,16 @@ class VideoPlayerWidget(QGraphicsView):
         super().__init__()
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.horizontalScrollBar().setDisabled(True)
+        self.verticalScrollBar().setDisabled(True)
 
         self.player = QMediaPlayer()
         self.player.positionChanged.connect(self._on_video_position_changed)
 
         self.scene = QGraphicsScene()
         self.setScene(self.scene)
+
+        self.bg_rect = self.scene.addRect(QRect(-100, -100, 300, 300), QPen(QColor(0, 0, 0, 0)))
 
         self.video_item = QGraphicsVideoItem()
         self.scene.addItem(self.video_item)
@@ -144,12 +149,9 @@ class VideoPlayerWidget(QGraphicsView):
 
         self.setMinimumSize(200, 200)
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
-        self.player.mediaStatusChanged.connect(self._on_media_status_changed)
+        self.player.mediaStatusChanged.connect(lambda _: QTimer.singleShot(1000, self.fit_view))
 
         self.gazes = []
-
-    def _on_media_status_changed(self, status):
-        QTimer.singleShot(500, self.fit_view)
 
     def _on_video_position_changed(self, timestamp_ms):
         gaze_idx = find_gaze_index_by_timestamp(self.gazes, timestamp_ms/1000.0)
@@ -162,12 +164,19 @@ class VideoPlayerWidget(QGraphicsView):
 
 
     def fit_view(self):
-        self.video_item.setSize(self.video_item.nativeSize())
+        if self.video_item.size() != self.video_item.nativeSize():
+            w = self.video_item.nativeSize().width()
+            h = self.video_item.nativeSize().height()
+            self.video_item.setSize(self.video_item.nativeSize())
+            self.bg_rect.setRect(QRect(-w, -h, w*3, h*3))
+
         self.fitInView(self.video_item, Qt.KeepAspectRatio)
-        self.centerOn(self.video_item.boundingRect().center())
 
     def resizeEvent(self, event):
         self.fit_view()
+
+    def sizeHint(self):
+        return None
 
     def load(self, path):
         self.player.setSource(QUrl.fromLocalFile(str(path)))
@@ -243,7 +252,6 @@ class SceneViewerWindow(Qt3DExtras.Qt3DWindow):
         self.gaze_pointer_entity.addComponent(self.gaze_pointer_transform)
 
         self.setRootEntity(self.root_entity)
-
 
         self.camera_controller = Qt3DExtras.QOrbitCameraController(self.root_entity)
         self.camera_controller.setLinearSpeed(50.0)
