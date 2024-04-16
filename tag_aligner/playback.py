@@ -7,21 +7,27 @@ from pathlib import Path
 from PySide6.QtWidgets import (
     QApplication,
     QWidget,
-    QGridLayout, QHBoxLayout, QVBoxLayout,
+    QGridLayout, QHBoxLayout,
     QPushButton,
     QSlider,
+    QGraphicsView,
+    QGraphicsScene,
+    QSizePolicy,
 )
 from PySide6.QtCore import (
     Qt,
     QUrl,
+    QTimer,
 )
 from PySide6.QtGui import (
     QVector3D,
     QQuaternion,
+    QPen,
+    QColor,
 )
 
 from PySide6.QtMultimedia import QMediaPlayer
-from PySide6.QtMultimediaWidgets import QVideoWidget
+from PySide6.QtMultimediaWidgets import QGraphicsVideoItem
 from PySide6.Qt3DExtras import Qt3DExtras
 from PySide6.Qt3DCore import Qt3DCore
 from PySide6.Qt3DRender import Qt3DRender
@@ -42,6 +48,8 @@ class PlaybackApp(QApplication):
         self.window = PlaybackWindow()
         self.window.show()
 
+        self.gazes = None
+
     def load_recording(self, path):
         videos = list(path.glob('*.mp4'))
         video_file = videos[0]
@@ -54,7 +62,20 @@ class PlaybackApp(QApplication):
             recording_info = json.load(recording_info_file)
 
         gaze_file = path / 'gaze.csv'
-        self.window.scene_widget.load_gazes(gaze_file, recording_info['start_time'])
+        with gaze_file.open('r') as csv_file:
+            reader = csv.DictReader(csv_file)
+            self.gazes = []
+            for row in reader:
+                for k in row:
+                    if ' id' not in k:
+                        row[k] = float(row[k])
+
+                row['timestamp'] = (row['timestamp [ns]'] - recording_info['start_time']) / 1e9
+
+                self.gazes.append(row)
+
+        self.window.scene_widget.set_gazes(self.gazes)
+        self.window.video_widget.set_gazes(self.gazes)
 
     def load_scene(self, path):
         self.window.scene_widget.load_scene(path)
@@ -99,21 +120,73 @@ class PlaybackWindow(QWidget):
         self.time_slider.setValue(time)
 
 
-class VideoPlayerWidget(QWidget):
+class VideoPlayerWidget(QGraphicsView):
     def __init__(self):
         super().__init__()
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
         self.player = QMediaPlayer()
-        self.player_widget = QVideoWidget()
-        self.player.setVideoOutput(self.player_widget)
+        self.player.positionChanged.connect(self._on_video_position_changed)
 
-        self.setLayout(QVBoxLayout())
-        self.layout().addWidget(self.player_widget)
+        self.scene = QGraphicsScene()
+        self.setScene(self.scene)
+
+        self.video_item = QGraphicsVideoItem()
+        self.scene.addItem(self.video_item)
+
+        pen = QPen(QColor(255, 0, 0, 100))
+        pen.setWidth(20)
+        self.gaze_circle = self.scene.addEllipse(-1000, -1000, 150, 150, pen)
+        self.gaze_circle.setVisible(False)
+
+        self.player.setVideoOutput(self.video_item)
 
         self.setMinimumSize(200, 200)
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+        self.player.mediaStatusChanged.connect(self._on_media_status_changed)
+
+        self.gazes = []
+
+    def _on_media_status_changed(self, status):
+        QTimer.singleShot(500, self.fit_view)
+
+    def _on_video_position_changed(self, timestamp_ms):
+        gaze_idx = find_gaze_index_by_timestamp(self.gazes, timestamp_ms/1000.0)
+        if gaze_idx is None:
+            self.set_gaze_point(None, None)
+            return
+
+        gaze = self.gazes[gaze_idx]
+        self.set_gaze_point(gaze["gaze x [px]"], gaze["gaze y [px]"])
+
+
+    def fit_view(self):
+        self.video_item.setSize(self.video_item.nativeSize())
+        self.fitInView(self.video_item, Qt.KeepAspectRatio)
+        self.centerOn(self.video_item.boundingRect().center())
+
+    def resizeEvent(self, event):
+        self.fit_view()
 
     def load(self, path):
         self.player.setSource(QUrl.fromLocalFile(str(path)))
+
+    def set_gazes(self, gazes):
+        self.gazes = gazes
+
+    def set_gaze_point(self, x, y):
+        if x is None or y is None:
+            self.gaze_circle.setVisible(False)
+            return
+
+        self.gaze_circle.setVisible(True)
+        self.gaze_circle.setRect(
+            x - self.gaze_circle.rect().width()/2,
+            y - self.gaze_circle.rect().height()/2,
+            self.gaze_circle.rect().width(),
+            self.gaze_circle.rect().height(),
+        )
 
     def play(self):
         self.player.play()
@@ -183,7 +256,9 @@ class SceneViewerWindow(Qt3DExtras.Qt3DWindow):
         self.subject_transform.setRotation(rotation)
 
     def set_gaze_angle(self, rotation):
-        self.gaze_pointer_transform.setRotation(rotation)
+        self.gaze_pointer_entity.setEnabled(rotation is not None)
+        if rotation is not None:
+            self.gaze_pointer_transform.setRotation(rotation)
 
 
 class SceneViewerWidget(QWidget):
@@ -228,81 +303,81 @@ class ScenePlayerWidget(SceneViewerWidget):
 
         print(len(self.poses), 'poses loaded')
 
-    def load_gazes(self, path, recording_start_time):
-        with path.open('r') as csv_file:
-            reader = csv.DictReader(csv_file)
-            self.gazes = []
-            for row in reader:
-                for k in row:
-                    if ' id' not in k:
-                        row[k] = float(row[k])
-
-                row['timestamp'] = (row['timestamp [ns]'] - recording_start_time) / 1e9
-
-                self.gazes.append(row)
-
-        print(len(self.gazes), 'gazes loaded')
+    def set_gazes(self, gazes):
+        self.gazes = gazes
 
     def seek_to_time(self, timestamp_ms):
-        pose_idx = self.find_pose_index_by_timestamp(timestamp_ms/1000.0)
-        pose = self.poses[pose_idx]
+        pose_idx = find_pose_index_by_timestamp(self.poses, timestamp_ms/1000.0)
+        if pose_idx is not None:
+            pose = self.poses[pose_idx]
 
-        cam_pose_cv = Transformation(
-            np.array([pose['translation_x'], pose['translation_y'], pose['translation_z']]),
-            Rotation.from_quat([pose['rotation_x'], pose['rotation_y'], pose['rotation_z'], pose['rotation_w']]),
-        )
-        cam_pose_qt = cv_space_to_qt3d_space(cam_pose_cv)
+            cam_pose_cv = Transformation(
+                np.array([pose['translation_x'], pose['translation_y'], pose['translation_z']]),
+                Rotation.from_quat([pose['rotation_x'], pose['rotation_y'], pose['rotation_z'], pose['rotation_w']]),
+            )
+            cam_pose_qt = cv_space_to_qt3d_space(cam_pose_cv)
 
-        position = QVector3D(*cam_pose_qt.position)
-        x,y,z,w = cam_pose_qt.rotation.as_quat()
-        rotation = QQuaternion(w,x,y,z)
+            position = QVector3D(*cam_pose_qt.position)
+            x,y,z,w = cam_pose_qt.rotation.as_quat()
+            rotation = QQuaternion(w,x,y,z)
 
-        self.scene_viewer.set_subject_pose(position, rotation)
+            self.scene_viewer.set_subject_pose(position, rotation)
 
-        gaze_idx = self.find_gaze_index_by_timestamp(timestamp_ms/1000.0)
-        gaze = self.gazes[gaze_idx]
-        gaze_transform_cv = Transformation(
-            np.array([0.0, 0.0, 0.0]),
-            Rotation.from_euler('xyz', [gaze['elevation [deg]'], gaze['azimuth [deg]'], 0.0], degrees=True),
-        )
-        gaze_pose_qt = cv_space_to_qt3d_space(gaze_transform_cv)
-        x,y,z,w = gaze_pose_qt.rotation.as_quat()
-        rotation = QQuaternion(w,x,y,z)
-        self.scene_viewer.set_gaze_angle(rotation)
-
-
-    def find_pose_index_by_timestamp(self, timestamp):
-        left_idx = 0
-        right_idx = len(self.poses)-1
-        while right_idx - left_idx > 1:
-            mid_idx = (left_idx + right_idx) // 2
-
-            if timestamp < self.poses[mid_idx]['start_timestamp']:
-                right_idx = mid_idx
-            elif timestamp > self.poses[mid_idx]['end_timestamp']:
-                left_idx = mid_idx
-            else:
-                break
-
-        return mid_idx
-
-    def find_gaze_index_by_timestamp(self, timestamp):
-        left_idx = 0
-        right_idx = len(self.gazes)-1
-        while right_idx - left_idx > 1:
-            mid_idx = (left_idx + right_idx) // 2
-
-            if timestamp < self.gazes[mid_idx]['timestamp']:
-                right_idx = mid_idx
-            elif timestamp > self.gazes[mid_idx]['timestamp']:
-                left_idx = mid_idx
-            else:
-                break
-
-        return mid_idx
+        gaze_idx = find_gaze_index_by_timestamp(self.gazes, timestamp_ms/1000.0)
+        if gaze_idx is not None:
+            gaze = self.gazes[gaze_idx]
+            gaze_transform_cv = Transformation(
+                np.array([0.0, 0.0, 0.0]),
+                Rotation.from_euler('xyz', [gaze['elevation [deg]'], gaze['azimuth [deg]'], 0.0], degrees=True),
+            )
+            gaze_pose_qt = cv_space_to_qt3d_space(gaze_transform_cv)
+            x,y,z,w = gaze_pose_qt.rotation.as_quat()
+            rotation = QQuaternion(w,x,y,z)
+            self.scene_viewer.set_gaze_angle(rotation)
+        else:
+            self.scene_viewer.set_gaze_angle(None)
 
     def move(self, x, y, z):
         self.scene_viewer.camera().translateWorld(QVector3D(x, y, z))
+
+
+def find_gaze_index_by_timestamp(gazes, timestamp, omission_threshold=1/100):
+    left_idx = 0
+    right_idx = len(gazes)-1
+    while right_idx - left_idx > 1:
+        mid_idx = (left_idx + right_idx) // 2
+
+        if timestamp < gazes[mid_idx]['timestamp']:
+            right_idx = mid_idx
+        elif timestamp > gazes[mid_idx]['timestamp']:
+            left_idx = mid_idx
+        else:
+            break
+
+    if abs(timestamp-gazes[mid_idx]['timestamp']) > omission_threshold:
+        return None
+
+    return mid_idx
+
+def find_pose_index_by_timestamp(poses, timestamp, omission_threshold=1/15):
+    left_idx = 0
+    right_idx = len(poses)-1
+    while right_idx - left_idx > 1:
+        mid_idx = (left_idx + right_idx) // 2
+
+        if timestamp < poses[mid_idx]['start_timestamp']:
+            right_idx = mid_idx
+        elif timestamp > poses[mid_idx]['end_timestamp']:
+            left_idx = mid_idx
+        else:
+            break
+
+    mean_ts = (poses[mid_idx]['start_timestamp']+poses[mid_idx]['end_timestamp'])/2
+    if abs(timestamp-mean_ts) > omission_threshold:
+        return None
+
+    return mid_idx
+
 
 
 if __name__ == '__main__':
