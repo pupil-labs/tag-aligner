@@ -202,24 +202,32 @@ class SceneViewerWindow(Qt3DExtras.Qt3DWindow):
     def __init__(self):
         super().__init__()
 
-        self.defaultFrameGraph().setClearColor("black")
+        self.defaultFrameGraph().setClearColor(QColor(27, 30, 32))
         self.defaultFrameGraph().setFrustumCullingEnabled(False)
 
         self.root_entity = Qt3DCore.QEntity()
         self.scene = Qt3DRender.QSceneLoader()
         self.root_entity.addComponent(self.scene)
 
+        self.subject_material = Qt3DExtras.QPhongMaterial()
+        self.subject_material.setAmbient(QColor(128, 128, 128))
+
+        self.ray_material = Qt3DExtras.QPhongMaterial()
+        self.ray_material.setAmbient(QColor(255, 0, 0))
+
         self.subject_entity = Qt3DCore.QEntity(self.root_entity)
         self.subject_scene = Qt3DRender.QSceneLoader()
+        self.subject_scene.statusChanged.connect(lambda _: self.override_materials(self.subject_scene, self.subject_material))
         self.subject_scene.setSource(QUrl.fromLocalFile(str('tag_aligner/assets/JAN.gltf')))
+
         self.subject_transform = Qt3DCore.QTransform()
         self.subject_entity.addComponent(self.subject_scene)
         self.subject_entity.addComponent(self.subject_transform)
 
-
         self.light_entity = Qt3DCore.QEntity(self.subject_entity)
         self.light = Qt3DRender.QPointLight(self.light_entity)
-        self.light.setIntensity(5)
+        self.light.setIntensity(0.5)
+        self.light.setLinearAttenuation(0.0)
         self.light_transform = Qt3DCore.QTransform()
         self.light_transform.setTranslation(QVector3D(0, 0.1, 0.1))
         self.light_entity.addComponent(self.light)
@@ -228,6 +236,7 @@ class SceneViewerWindow(Qt3DExtras.Qt3DWindow):
 
         self.gaze_pointer_entity = Qt3DCore.QEntity(self.subject_entity)
         self.gaze_ray_mesh = Qt3DRender.QSceneLoader()
+        self.gaze_ray_mesh.statusChanged.connect(lambda _: self.override_materials(self.gaze_ray_mesh, self.ray_material))
         self.gaze_ray_mesh.setSource(QUrl.fromLocalFile(str('tag_aligner/assets/ray.gltf')))
         self.gaze_pointer_transform = Qt3DCore.QTransform()
         self.gaze_pointer_entity.addComponent(self.gaze_ray_mesh)
@@ -242,6 +251,10 @@ class SceneViewerWindow(Qt3DExtras.Qt3DWindow):
         self.camera_controller.setCamera(self.camera())
 
         self.initial_pose_set = False
+
+    def override_materials(self, scene_tree, mat):
+        for entity_name in scene_tree.entityNames():
+            scene_tree.entity(entity_name).addComponent(mat)
 
     def resizeEvent(self, event):
         self.camera().setAspectRatio(self.width() / self.height())
