@@ -11,7 +11,7 @@ pip install -r requirements.txt
 
 ### 0. Preparation
 
-1. Create a [RIM enrichment](https://docs.pupil-labs.com/neon/pupil-cloud/enrichments/reference-image-mapper/) just like an other.
+1. Create a [RIM enrichment](https://docs.pupil-labs.com/neon/pupil-cloud/enrichments/reference-image-mapper/) just like any other.
     * At least one of the recordings needs to contain an AprilTag marker with a known size, position, and orientation. This can be the scanning recording, but does not need to be.
     * Multiple tags may improve the accuracy.
 2. Download the enrichment data using the Pupil Cloud API.
@@ -112,12 +112,6 @@ To convert Blender-space poses to OpenCV (e.g., in the reference tag json file):
 
 For example, if the position is [-0.97, 1.37, 1.26] in Blender, then it is [-0.97, -1.26, 1.37] in OpenCV format.
 
-Note that because of differences in Blender's and OpenCV's assumptions about which orientation is "zero rotation", you need to subtract 90 degrees rotation about the x-axis in Blender before converting the Blender's quaternion to OpenCV format. You can find the quaternion that Blender has applied to an object by pressing "n" while 3D editor preview ("Object Mode"), which brings up the "Transform" tab. Then, choose "Quaternion (WXYZ)" from the drop-down menu under "Rotation".
-
-For example, if an object has a quaternion of [0.707, 0.707, 0.0, 0.0] in Blender, then we do the following:
-
-1. Choose "XYZ Euler" from the drop-down menu. Result => [90, 0, 0]
-2. Subtract 90 degrees from the X axis rotation. Result => [0, 0, 0]
-3. Choose "Quaternion (WXYZ)" from the drop-down menu. Result => [1.0, 0.0, 0.0, 0.0]
-4. Convert to OpenCV format. Result => [0.0, 0.0, 0.0, 1.0]
-5. Save this value in the tag "json" file and then undo the 90 degree rotation in Blender.
+Note that Blender's default initial orientation for a Plane is rotated -90 degrees about the x-axis relative to OpenCV's assumptions.
+In other words, for the purposes of digital twin development, Blender's initial orientation for a Plane is "flat on the floor", while
+OpenCV's is "vertical on the wall".
