@@ -113,5 +113,5 @@ To convert Blender-space poses to OpenCV (e.g., in the reference tag json file):
 For example, if the position is [-0.97, 1.37, 1.26] in Blender, then it is [-0.97, -1.26, 1.37] in OpenCV format.
 
 Note that Blender's default initial orientation for a Plane is rotated -90 degrees about the x-axis relative to OpenCV's assumptions.
-In other words, for the purposes of digital twin development, Blender's initial orientation for a Plane is "flat on the floor", while
+In other words, for the purposes of digital twin development, Blender's "zero rotation" for a Plane is "flat on the floor", while
 OpenCV's is "vertical on the wall".
