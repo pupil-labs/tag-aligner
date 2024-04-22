@@ -11,7 +11,7 @@ pip install -r requirements.txt
 
 ### 0. Preparation
 
-1. Create a [RIM enrichment](https://docs.pupil-labs.com/neon/pupil-cloud/enrichments/reference-image-mapper/) just like an other.
+1. Create a [RIM enrichment](https://docs.pupil-labs.com/neon/pupil-cloud/enrichments/reference-image-mapper/) just like any other.
     * At least one of the recordings needs to contain an AprilTag marker with a known size, position, and orientation. This can be the scanning recording, but does not need to be.
     * Multiple tags may improve the accuracy.
 2. Download the enrichment data using the Pupil Cloud API.
@@ -19,8 +19,17 @@ pip install -r requirements.txt
     python -m downloader.rim api_key workspace_id project_id enrichment_id recording_id
     ```
 
+    The IDs are found as follows:
+        a. The Recording ID is found by right-clicking on a recording and choosing “View recording information” in the menu that appears.
+        b. The Enrichment ID is found by opening the Enrichment and clicking the three button menu above and to the right of “Enrichment Type - Reference Image Mapper”. Choose “Copy enrichment ID” in the menu that appears.
+        c. When the tab with Pupil Cloud is open to the Project overview, then the Workspace ID and Project ID are found in the URL address bar of your browser. In the example URL below, they are marked in bold:
+
+            https://cloud.pupil-labs.com/workspaces/*83f092d1-9380-46f9-b639-432d61de0170*/projects/*6f12dbd1-810e-48ca-9161-8c171bd246e0*/recordings
+
 3. Prepare a `json` file with reference tag information
+    * The "id" is the ID number of an AprilTag from the tag36h11 family.
     * Units for position and size are in output space units
+    * Size is the length for one side of the black part of an AprilTag, excluding the white border.
     * Position is measured from the center of the tag
     * Rotation is a quaternion in `[x, y, z, w]` order
     * An upright tag positioned on a wall would have a quaternion value of `[0.0, 0.0, 0.0, 1.0]`.
@@ -100,3 +109,9 @@ To convert Blender-space poses to OpenCV (e.g., in the reference tag json file):
 | Quaternion **y** | Quaternion **z** |
 | Quaternion **z** | Quaternion **y** |
 | Quaternion w     | Quaternion w     |
+
+For example, if the position is [-0.97, 1.37, 1.26] in Blender, then it is [-0.97, -1.26, 1.37] in OpenCV format.
+
+Note that Blender's default initial orientation for a Plane is rotated -90 degrees about the x-axis relative to OpenCV's assumptions.
+In other words, for the purposes of digital twin development, Blender's "zero rotation" for a Plane is "flat on the floor", while
+OpenCV's is "vertical on the wall".
