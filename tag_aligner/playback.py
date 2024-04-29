@@ -211,17 +211,19 @@ class SceneViewerWindow(Qt3DExtras.Qt3DWindow):
     def __init__(self):
         super().__init__()
 
-        self.defaultFrameGraph().setClearColor(QColor(27, 30, 32))
+        self.defaultFrameGraph().setClearColor(QColor(51, 51, 51))
         self.defaultFrameGraph().setFrustumCullingEnabled(False)
 
         self.root_entity = Qt3DCore.QEntity()
         self.scene = Qt3DRender.QSceneLoader()
         self.root_entity.addComponent(self.scene)
 
-        self.subject_material = Qt3DExtras.QPhongMaterial()
+        self.subject_material = Qt3DExtras.QDiffuseSpecularMaterial()
+        self.subject_material.setDiffuse(QColor(128, 128, 128))
         self.subject_material.setAmbient(QColor(128, 128, 128))
 
-        self.ray_material = Qt3DExtras.QPhongMaterial()
+        self.ray_material = Qt3DExtras.QDiffuseSpecularMaterial()
+        self.ray_material.setDiffuse(QColor(255, 0, 0))
         self.ray_material.setAmbient(QColor(255, 0, 0))
 
         self.subject_entity = Qt3DCore.QEntity(self.root_entity)
@@ -242,6 +244,15 @@ class SceneViewerWindow(Qt3DExtras.Qt3DWindow):
         self.light_entity.addComponent(self.light)
         self.light_entity.addComponent(self.light_transform)
 
+        self.light_entity2 = Qt3DCore.QEntity(self.root_entity)
+        self.light2 = Qt3DRender.QPointLight(self.light_entity2)
+        self.light2.color = QColor(255, 255, 255)
+        self.light2.setIntensity(0.75)
+        # self.light2.setLinearAttenuation(0.0)
+        self.light_transform = Qt3DCore.QTransform()
+        self.light_transform.setTranslation(QVector3D(3.0, 1.0, 8.9))
+        self.light_entity2.addComponent(self.light2)
+        self.light_entity2.addComponent(self.light_transform)
 
         self.gaze_pointer_entity = Qt3DCore.QEntity(self.subject_entity)
         self.gaze_ray_mesh = Qt3DRender.QSceneLoader()
