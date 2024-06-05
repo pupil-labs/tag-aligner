@@ -2,9 +2,9 @@ This folder contains an Add-on to import Tag Aligner data into Blender, as well 
 
 The Blender Add-on can be installed as follows:
 
-- Download the 'tag_aligner_blender_addon.zip' file found in [Releases](https://github.com/pupil-labs/tag-aligner/releases).
+- Download the latest Tag Aligner Blender Addon ZIP file found in [Releases](https://github.com/pupil-labs/tag-aligner/releases).
 
-- Open Blender and install the Add-on by going to Edit -> Preferences -> Add-ons -> Install and then choose the 'tag_aligner_blender.zip' file (no need to extract it).
+- Open Blender and install the Add-on by going to Edit -> Preferences -> Add-ons -> Install and then choose the Tag Aligner Blender Addon ZIP file (no need to extract it).
 
 - Import a 3D scene that you have prepared for your recording.
 
