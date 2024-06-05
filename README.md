@@ -24,7 +24,7 @@ pip install -r requirements.txt
      * The Enrichment ID is found by opening the Enrichment and clicking the three button menu above and to the right of “Enrichment Type - Reference Image Mapper”. Choose “Copy enrichment ID” in the menu that appears.
      * When the tab with Pupil Cloud is open to the Project overview, then the Workspace ID and Project ID are found in the URL address bar of your browser. In the example URL below, they are marked in bold:
 
-        https://cloud.pupil-labs.com/workspaces/*83f092d1-9380-46f9-b639-432d61de0170*/projects/*6f12dbd1-810e-48ca-9161-8c171bd246e0*/recordings
+        <pre>https://cloud.pupil-labs.com/workspaces/<b>83f092d1-9380-46f9-b639-432d61de0170</b>/projects/<b>6f12dbd1-810e-48ca-9161-8c171bd246e0</b>/recordings</pre>
 
 3. Prepare a `json` file with reference tag information
     * The "id" is the ID number of an AprilTag from the tag36h11 family.
