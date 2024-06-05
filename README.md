@@ -70,6 +70,11 @@ python -m tag_aligner.apply_alignment path/to/recording_folder/ path/to/alignmen
 This will create a new file in the recording folder named `aligned_poses.csv` with the scaled and aligned poses. Note that orientation is specified as a quaternion.
 
 ### 3. Bonus: Visualize
+You have two options:
+
+* Follow the steps below to visualize the data in real-time with a live playback of the Neon recording.
+* Load the data into Blender using our [Blender Add-on](https://github.com/pupil-labs/tag-aligner/tree/main/blender_and_notebook)
+
 This requires an additional dependency not specified in `requirements.txt`:
 ```bash
 pip install pyside6
