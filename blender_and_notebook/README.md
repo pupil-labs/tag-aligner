@@ -22,4 +22,4 @@ The Blender Add-on can be installed as follows:
 
 Once the process finishes, open the Animation view and press the spacebar to see the recording play in 3D!
 
-You can also open the 'tag_aligner_blender_addon.py' file to see the code of the Add-on, and the assets can be opened in Blender for further inspection.
+You can also open the 'tag_aligner_blender_addon_vX.X.X.py' file to see the code of the Add-on.
